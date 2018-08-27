@@ -726,8 +726,8 @@ and Resolve =
     /// input defines the .NET type of the value being subscribed to
     /// expr is the untyped version of Expr<ResolveFieldContext -> 'Root -> 'Input -> bool>
     | AsyncFilter of root: Type * input:Type * output:Type * expr:Expr
-    
-    | ResolveExpr of expr:Expr 
+
+    | ResolveExpr of expr:Expr
 
 
     /// Returns an expression defining resolver function.
@@ -1939,12 +1939,12 @@ module Resolve =
         if typ.GetTypeInfo().IsGenericType && typ.GetGenericTypeDefinition() = typedefof<option<_>> then
             Some(typ.GenericTypeArguments |> Array.head)
         else None
-    
+
     let private (|FSharpAsync|_|) (typ: Type) =
         if typ.GetTypeInfo().IsGenericType && typ.GetGenericTypeDefinition() = typedefof<Async<_>> then
             Some(typ.GenericTypeArguments |> Array.head)
         else None
-        
+
     let private boxify<'T,'U>(f:ResolveFieldContext -> 'T -> 'U) : ResolveFieldContext -> obj -> obj =
         <@@ fun ctx (x:obj) -> f ctx (x :?> 'T)  |> box  @@>
         |> LeafExpressionConverter.EvaluateQuotation
@@ -1958,7 +1958,7 @@ module Resolve =
     let private boxifyFilter<'Root, 'Input, 'Output>(f:ResolveFieldContext -> 'Root -> 'Input -> 'Output option): ResolveFieldContext -> obj -> obj -> obj option =
         <@@ fun ctx (r:obj) (i:obj) -> f ctx (r :?> 'Root) (i :?> 'Input) |> Option.map(box)@@>
         |> LeafExpressionConverter.EvaluateQuotation
-        |> unbox 
+        |> unbox
 
     let private boxifyAsyncFilter<'Root, 'Input, 'Output>(f:ResolveFieldContext -> 'Root -> 'Input -> Async<'Output option>): ResolveFieldContext -> obj -> obj -> Async<obj option> =
         <@@ fun ctx (r:obj) (i:obj) -> async.Bind(f ctx (r :?> 'Root) (i :?> 'Input), async.Return << Option.map(box))@@>
@@ -1966,11 +1966,11 @@ module Resolve =
         |> unbox
 
     let private getRuntimeMethod name =
-        let methods = typeof<Marker>.DeclaringType.GetRuntimeMethods() 
+        let methods = typeof<Marker>.DeclaringType.GetRuntimeMethods()
         methods |> Seq.find (fun m -> m.Name.Equals name)
-        
+
     let private runtimeBoxify = getRuntimeMethod "boxify"
-    
+
     let private runtimeBoxifyAsync = getRuntimeMethod "boxifyAsync"
 
     let private runtimeBoxifyFilter = getRuntimeMethod "boxifyFilter"
@@ -1979,9 +1979,9 @@ module Resolve =
 
     let private unwrapExpr = function
         | WithValue(resolver, _, _) -> (resolver, resolver.GetType())
-        | expr -> failwithf "Could not extract resolver from Expr: '%A'" expr 
-        
-    let inline private resolveUntyped f d c (methodInfo:MethodInfo) = 
+        | expr -> failwithf "Could not extract resolver from Expr: '%A'" expr
+
+    let inline private resolveUntyped f d c (methodInfo:MethodInfo) =
         let result = methodInfo.GetGenericMethodDefinition().MakeGenericMethod(d,c).Invoke(null, [|f|])
         result |> unbox
 
@@ -1991,13 +1991,13 @@ module Resolve =
 
     let private boxifyExpr expr : ResolveFieldContext -> obj -> obj =
         match unwrapExpr expr with
-        | resolver, FSharpFunc(_,FSharpFunc(d,c)) -> 
+        | resolver, FSharpFunc(_,FSharpFunc(d,c)) ->
             resolveUntyped resolver d c runtimeBoxify
         | resolver, _ -> failwithf "Unsupported signature for Resolve %A" (resolver.GetType())
-    
+
     let private boxifyExprAsync expr : ResolveFieldContext -> obj -> Async<obj> =
         match unwrapExpr expr with
-        | resolver, FSharpFunc(_,FSharpFunc(d,FSharpAsync(c))) -> 
+        | resolver, FSharpFunc(_,FSharpFunc(d,FSharpAsync(c))) ->
             resolveUntyped resolver d c runtimeBoxifyAsync
         | resolver, _ -> failwithf "Unsupported signature for Async Resolve %A" (resolver.GetType())
 
@@ -2005,25 +2005,25 @@ module Resolve =
         match unwrapExpr expr with
         | resolver, FSharpFunc(_,FSharpFunc(r,FSharpFunc(i,FSharpOption(o)))) ->
             resolveUntypedFilter resolver r i o runtimeBoxifyFilter
-        | resolver, _ -> failwithf "Unsupported signature for Subscription Filter Resolve %A" (resolver.GetType()) 
-        
+        | resolver, _ -> failwithf "Unsupported signature for Subscription Filter Resolve %A" (resolver.GetType())
+
     let private boxifyAsyncFilterExpr expr: ResolveFieldContext -> obj -> obj -> Async<obj option> =
         match unwrapExpr expr with
         | resolver, FSharpFunc(_,FSharpFunc(r,FSharpFunc(i,FSharpAsync(FSharpOption(o))))) ->
             resolveUntypedFilter resolver r i o runtimeBoxifyAsyncFilter
-        | resolver, _ -> failwithf "Unsupported signature for Async Subscription Filter Resolve %A" (resolver.GetType()) 
+        | resolver, _ -> failwithf "Unsupported signature for Async Subscription Filter Resolve %A" (resolver.GetType())
 
-    let (|BoxedSync|_|) = function 
+    let (|BoxedSync|_|) = function
         | Sync(d,c,expr) -> Some(d,c,boxifyExpr expr)
         | _ -> None
-       
+
     let (|BoxedAsync|_|) = function
         | Async(d,c,expr) -> Some(d,c,boxifyExprAsync expr)
-        | _ -> None 
+        | _ -> None
 
     let (|BoxedExpr|_|) = function
         | ResolveExpr(e) -> Some(boxifyExpr e)
-        | _ -> None 
+        | _ -> None
 
     let (|BoxedFilterExpr|_|) = function
         | Filter(r,i,o,expr) -> Some(r,i,o,boxifyFilterExpr expr)
@@ -2033,41 +2033,41 @@ module Resolve =
         | AsyncFilter(r,i,o,expr) -> Some(r,i,o,boxifyAsyncFilterExpr expr)
         | _ -> None
 
-    let private genMethodResolve<'Val, 'Res> (typeInfo: TypeInfo) (methodInfo: MethodInfo) = 
+    let private genMethodResolve<'Val, 'Res> (typeInfo: TypeInfo) (methodInfo: MethodInfo) =
         let argInfo = typeof<ResolveFieldContext>.GetTypeInfo().GetDeclaredMethod("Arg")
         let valueVar = Var("value", typeof<'Val>)
         let ctxVar = Var("ctx", typeof<ResolveFieldContext>)
-        let argExpr (arg : ParameterInfo) = 
-            Expr.Call(Expr.Var(ctxVar), argInfo.MakeGenericMethod(arg.ParameterType), [ Expr.Value(arg.Name) ])        
-        let args = 
+        let argExpr (arg : ParameterInfo) =
+            Expr.Call(Expr.Var(ctxVar), argInfo.MakeGenericMethod(arg.ParameterType), [ Expr.Value(arg.Name) ])
+        let args =
             methodInfo.GetParameters()
             |> Array.map argExpr
-            |> Array.toList        
-        let expr = 
+            |> Array.toList
+        let expr =
             Expr.Lambda
                 (ctxVar, Expr<'Val -> 'Res>.Lambda(valueVar, Expr.Call(Expr.Var(valueVar), methodInfo, args)))
-        let compiled = expr |> LeafExpressionConverter.EvaluateQuotation 
+        let compiled = expr |> LeafExpressionConverter.EvaluateQuotation
         let exprWithVal = Expr.WithValue(compiled, typeof<ResolveFieldContext -> 'Val -> 'Res>, expr)
         Sync(typeof<'Val>, typeof<'Res>, exprWithVal)
-        
-    let private genPropertyResolve<'Val, 'Res> (typeInfo: TypeInfo) property = 
+
+    let private genPropertyResolve<'Val, 'Res> (typeInfo: TypeInfo) property =
         let valueVar = Var("value", typeof<'Val>)
         let ctxVar = Var("ctx", typeof<ResolveFieldContext>)
-        let expr = 
+        let expr =
             Expr.Lambda
-                (ctxVar, 
+                (ctxVar,
                  Expr<'Val -> 'Res>.Lambda(valueVar, Expr.PropertyGet(Expr.Var(valueVar), property)))
-        let compiled = expr |> LeafExpressionConverter.EvaluateQuotation 
+        let compiled = expr |> LeafExpressionConverter.EvaluateQuotation
         let exprWithVal = Expr.WithValue(compiled, typeof<ResolveFieldContext -> 'Val -> 'Res>, expr)
         Sync(typeof<'Val>, typeof<'Res>, exprWithVal)
-            
-    let internal defaultResolve<'Val, 'Res> (fieldName : string) : Resolve = 
+
+    let internal defaultResolve<'Val, 'Res> (fieldName : string) : Resolve =
         let typeInfo = typeof<'Val>.GetTypeInfo()
         let property = typeInfo.GetDeclaredProperty(fieldName, ignoreCase = true)
         match property with
-        | null -> 
+        | null ->
             let methodInfo = typeInfo.GetDeclaredMethod(fieldName, ignoreCase = true)
-            genMethodResolve<'Val, 'Res> typeInfo methodInfo      
+            genMethodResolve<'Val, 'Res> typeInfo methodInfo
         | p -> genPropertyResolve<'Val, 'Res> typeInfo p
 
 module Patterns =
@@ -2177,6 +2177,7 @@ module Patterns =
 module SchemaDefinitions =
     open System.Globalization
     open System.Reflection
+    open System.IO
 
     /// Tries to convert any value to int.
     let private coerceIntValue (x : obj) : int option =
@@ -2419,6 +2420,14 @@ module SchemaDefinitions =
             | false, _ -> None
         | _ -> None
 
+    type File = {Filename: string; Mimetype: string; Encoding: string; createReadStream: unit -> Stream}
+
+    /// Tries to resolve AST query input to Upload.
+    let private coerceUploadInput: Value -> File option = fun value -> None
+
+    /// Tries to convert any value to Guid.
+    let private coerceUploadValue (x : obj) : File option = None
+
     /// Wraps a GraphQL type definition, allowing defining field/argument
     /// to take option of provided value.
     let Nullable(innerDef : #TypeDef<'Val>) : NullableDef<'Val> = upcast { NullableDefinition.OfType = innerDef }
@@ -2512,6 +2521,15 @@ module SchemaDefinitions =
                   "The `Guid` scalar type represents a Globaly Unique Identifier value. It's a 128-bit long byte key, that can be serialized to string."
           CoerceInput = coerceGuidInput
           CoerceValue = coerceGuidValue }
+
+    /// GraphQL type for Upload
+    let Upload : ScalarDefinition<File> =
+        { Name = "Upload"
+          Description =
+              Some
+                  "The `Upload` scalar type represents a file upload."
+          CoerceInput = coerceUploadInput
+          CoerceValue = coerceUploadValue }
 
     /// GraphQL @include directive.
     let IncludeDirective : DirectiveDef =
@@ -2732,7 +2750,7 @@ module SchemaDefinitions =
         /// </summary>
         /// <param name="name">Field name. Must be unique in scope of the defining object.</param>
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>) : FieldDef<'Val> = 
+        static member Field(name : string, typedef : #OutputDef<'Res>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = None
                      TypeDef = typedef
@@ -2748,7 +2766,7 @@ module SchemaDefinitions =
         /// <param name="name">Field name. Must be unique in scope of the defining object.</param>
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>, 
+        static member Field(name : string, typedef : #OutputDef<'Res>,
                             [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = None
@@ -2765,8 +2783,8 @@ module SchemaDefinitions =
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
         /// <param name="description">Optional field description. Usefull for generating documentation.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>, description : string, 
-                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> = 
+        static member Field(name : string, typedef : #OutputDef<'Res>, description : string,
+                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> =
 
             upcast { FieldDefinition.Name = name
                      Description = Some description
@@ -2783,8 +2801,8 @@ module SchemaDefinitions =
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
         /// <param name="args">List of field arguments used to parametrize resolve expression output.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>, args : InputFieldDef list, 
-                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> = 
+        static member Field(name : string, typedef : #OutputDef<'Res>, args : InputFieldDef list,
+                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = None
                      TypeDef = typedef
@@ -2792,7 +2810,7 @@ module SchemaDefinitions =
                      Args = args |> List.toArray
                      DeprecationReason = None
                      Metadata = Metadata.Empty }
-        
+
         /// <summary>
         /// Creates field defined inside object type.
         /// </summary>
@@ -2801,7 +2819,7 @@ module SchemaDefinitions =
         /// <param name="description">Optional field description. Usefull for generating documentation.</param>
         /// <param name="args">List of field arguments used to parametrize resolve expression output.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>, description : string, args : InputFieldDef list, 
+        static member Field(name : string, typedef : #OutputDef<'Res>, description : string, args : InputFieldDef list,
                             [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = Some description
@@ -2820,9 +2838,9 @@ module SchemaDefinitions =
         /// <param name="args">List of field arguments used to parametrize resolve expression output.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
         /// <param name="deprecationReason">Deprecation reason.</param>
-        static member Field(name : string, typedef : #OutputDef<'Res>, description : string, args : InputFieldDef list, 
-                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>, 
-                            deprecationReason : string) : FieldDef<'Val> = 
+        static member Field(name : string, typedef : #OutputDef<'Res>, description : string, args : InputFieldDef list,
+                            [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> 'Res>,
+                            deprecationReason : string) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = Some description
                      TypeDef = typedef
@@ -2837,7 +2855,7 @@ module SchemaDefinitions =
         /// <param name="name">Field name. Must be unique in scope of the defining object.</param>
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member AsyncField(name : string, typedef : #OutputDef<'Res>, 
+        static member AsyncField(name : string, typedef : #OutputDef<'Res>,
                                  [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> Async<'Res>>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = None
@@ -2854,7 +2872,7 @@ module SchemaDefinitions =
         /// <param name="typedef">GraphQL type definition of the current field's type.</param>
         /// <param name="description">Optional field description. Usefull for generating documentation.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string, 
+        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string,
                                  [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> Async<'Res>>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = Some description
@@ -2872,8 +2890,8 @@ module SchemaDefinitions =
         /// <param name="description">Optional field description. Usefull for generating documentation.</param>
         /// <param name="args">List of field arguments used to parametrize resolve expression output.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
-        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string, 
-                                 args : InputFieldDef list, 
+        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string,
+                                 args : InputFieldDef list,
                                  [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> Async<'Res>>) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = Some description
@@ -2892,9 +2910,9 @@ module SchemaDefinitions =
         /// <param name="args">List of field arguments used to parametrize resolve expression output.</param>
         /// <param name="resolve">Expression used to resolve value from defining object.</param>
         /// <param name="deprecationReason">Deprecation reason.</param>
-        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string, 
-                                 args : InputFieldDef list, 
-                                 [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> Async<'Res>>, 
+        static member AsyncField(name : string, typedef : #OutputDef<'Res>, description : string,
+                                 args : InputFieldDef list,
+                                 [<ReflectedDefinition(true)>] resolve : Expr<ResolveFieldContext -> 'Val -> Async<'Res>>,
                                  deprecationReason : string) : FieldDef<'Val> =
             upcast { FieldDefinition.Name = name
                      Description = Some description
@@ -2934,7 +2952,7 @@ module SchemaDefinitions =
                      DeprecationReason = None
                      Args = [||]
                      Filter = Resolve.Filter(typeof<'Root>, typeof<'Input>, typeof<'Output>, filter)
-                     Metadata = Metadata.Empty } 
+                     Metadata = Metadata.Empty }
 
         /// <summary>
         /// Creates a subscription field inside object type.
@@ -3085,7 +3103,7 @@ module SchemaDefinitions =
                      Args = args |> List.toArray
                      Filter = Resolve.AsyncFilter(typeof<'Root>, typeof<'Input>, typeof<'Output>, filter)
                      Metadata = Metadata.Empty }
-        
+
 
         /// <summary>
         /// Creates an input field. Input fields are used like ordinary fileds in case of <see cref="InputObject"/>s,
